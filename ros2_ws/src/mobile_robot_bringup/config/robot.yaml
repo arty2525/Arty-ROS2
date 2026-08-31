@@ -4,6 +4,9 @@
 serial_device: /dev/serial0
 baud_rate: 115200
 
+communication:
+  telemetry_timeout_ms: 500
+
 geometry:
   wheel_radius: 0.0
   wheel_separation: 0.0
