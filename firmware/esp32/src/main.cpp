@@ -29,7 +29,7 @@ MotorDriver right_motor(
     config::kRightPwmPin,
     config::kRightDirPin,
     config::kRightPwmChannel,
-    true);
+    false);
 
 EncoderReader left_encoder(
     config::kLeftEncoderAPin,
@@ -39,7 +39,7 @@ EncoderReader left_encoder(
 EncoderReader right_encoder(
     config::kRightEncoderAPin,
     config::kRightEncoderBPin,
-    true);
+    false);
 
 VelocityController left_controller;
 VelocityController right_controller;
@@ -75,15 +75,18 @@ void send_packet(
       config::kMaximumPayloadSize +
       sizeof(uint16_t)]{};
 
-  const size_t size = encode_packet(
-      type,
-      sequence,
-      payload,
-      frame,
-      sizeof(frame));
+  const size_t size =
+      encode_packet(
+          type,
+          sequence,
+          payload,
+          frame,
+          sizeof(frame));
 
   if (size > 0U) {
-    control_serial.write(frame, size);
+    control_serial.write(
+        frame,
+        size);
   }
 }
 
@@ -113,30 +116,69 @@ void stop_motion() {
   right_motor.stop();
 }
 
-bool valid_positive_finite(const float value) {
-  return std::isfinite(value) && value > 0.0F;
+bool valid_boolean_byte(
+    const uint8_t value) {
+  return value == 0U ||
+         value == 1U;
 }
 
-void handle_packet(const Packet& packet) {
+bool valid_positive_finite(
+    const float value) {
+  return std::isfinite(value) &&
+         value > 0.0F;
+}
+
+void apply_inversion(
+    const ConfigurePayload& payload) {
+  left_motor.set_inverted(
+      payload.left_motor_inverted != 0U);
+
+  right_motor.set_inverted(
+      payload.right_motor_inverted != 0U);
+
+  left_encoder.set_inverted(
+      payload.left_encoder_inverted != 0U);
+
+  right_encoder.set_inverted(
+      payload.right_encoder_inverted != 0U);
+}
+
+void handle_packet(
+    const Packet& packet) {
   const auto type =
-      static_cast<MessageType>(packet.header.type);
+      static_cast<MessageType>(
+          packet.header.type);
 
   switch (type) {
     case MessageType::kCommandConfigure: {
       ConfigurePayload payload{};
 
-      if (!decode_payload(packet, payload)) {
+      if (!decode_payload(
+              packet,
+              payload)) {
         faults::set(
             fault_flags,
             FaultFlag::kProtocolError);
+
         send_ack(
             packet,
             AckStatus::kInvalidPayload);
         return;
       }
 
-      if (!valid_positive_finite(
-              payload.ticks_per_revolution)) {
+      const bool valid =
+          valid_positive_finite(
+              payload.ticks_per_revolution) &&
+          valid_boolean_byte(
+              payload.left_motor_inverted) &&
+          valid_boolean_byte(
+              payload.right_motor_inverted) &&
+          valid_boolean_byte(
+              payload.left_encoder_inverted) &&
+          valid_boolean_byte(
+              payload.right_encoder_inverted);
+
+      if (!valid) {
         stop_motion();
         configured = false;
         ticks_per_revolution = 0.0F;
@@ -152,6 +194,8 @@ void handle_packet(const Packet& packet) {
       }
 
       stop_motion();
+
+      apply_inversion(payload);
 
       ticks_per_revolution =
           payload.ticks_per_revolution;
@@ -188,32 +232,61 @@ void handle_packet(const Packet& packet) {
     case MessageType::kCommandEnable: {
       EnablePayload payload{};
 
-      if (!decode_payload(packet, payload)) {
+      if (!decode_payload(
+              packet,
+              payload)) {
         faults::set(
             fault_flags,
             FaultFlag::kProtocolError);
+
         send_ack(
             packet,
             AckStatus::kInvalidPayload);
         return;
       }
 
-      if (payload.enabled != 0U &&
+      if (!valid_boolean_byte(
+              payload.enabled)) {
+        faults::set(
+            fault_flags,
+            FaultFlag::kProtocolError);
+
+        send_ack(
+            packet,
+            AckStatus::kInvalidPayload);
+        return;
+      }
+
+      if (
+          payload.enabled != 0U &&
           !configured) {
         stop_motion();
+
         send_ack(
             packet,
             AckStatus::kRejectedByState);
         return;
       }
 
-      enabled = payload.enabled != 0U;
-
-      if (!enabled) {
+      if (payload.enabled == 0U) {
         stop_motion();
+
+        send_ack(
+            packet,
+            AckStatus::kAccepted);
+        return;
       }
 
+      enabled = true;
       last_command_ms = millis();
+      last_heartbeat_ms = millis();
+
+      faults::clear(
+          fault_flags,
+          FaultFlag::kCommandTimeout);
+      faults::clear(
+          fault_flags,
+          FaultFlag::kHeartbeatTimeout);
 
       send_ack(
           packet,
@@ -224,20 +297,24 @@ void handle_packet(const Packet& packet) {
     case MessageType::kCommandVelocity: {
       VelocityPayload payload{};
 
-      if (!decode_payload(packet, payload)) {
+      if (!decode_payload(
+              packet,
+              payload)) {
         faults::set(
             fault_flags,
             FaultFlag::kProtocolError);
         return;
       }
 
-      if (!std::isfinite(
+      if (
+          !std::isfinite(
               payload.left_rad_per_sec) ||
           !std::isfinite(
               payload.right_rad_per_sec)) {
         faults::set(
             fault_flags,
             FaultFlag::kInvalidVelocityCommand);
+
         stop_motion();
         return;
       }
@@ -253,15 +330,17 @@ void handle_packet(const Packet& packet) {
           fault_flags,
           FaultFlag::kCommandTimeout);
 
-      left_target = std::clamp(
-          payload.left_rad_per_sec,
-          -config::kMaxTargetRadPerSec,
-          config::kMaxTargetRadPerSec);
+      left_target =
+          std::clamp(
+              payload.left_rad_per_sec,
+              -config::kMaxTargetRadPerSec,
+              config::kMaxTargetRadPerSec);
 
-      right_target = std::clamp(
-          payload.right_rad_per_sec,
-          -config::kMaxTargetRadPerSec,
-          config::kMaxTargetRadPerSec);
+      right_target =
+          std::clamp(
+              payload.right_rad_per_sec,
+              -config::kMaxTargetRadPerSec,
+              config::kMaxTargetRadPerSec);
 
       last_command_ms = millis();
       return;
@@ -270,23 +349,29 @@ void handle_packet(const Packet& packet) {
     case MessageType::kCommandSetPid: {
       PidPayload payload{};
 
-      if (!decode_payload(packet, payload)) {
+      if (!decode_payload(
+              packet,
+              payload)) {
         faults::set(
             fault_flags,
             FaultFlag::kProtocolError);
+
         send_ack(
             packet,
             AckStatus::kInvalidPayload);
         return;
       }
 
-      if (!std::isfinite(payload.kp) ||
+      if (
+          !std::isfinite(payload.kp) ||
           !std::isfinite(payload.ki) ||
           !std::isfinite(payload.kd) ||
-          !std::isfinite(payload.feed_forward)) {
+          !std::isfinite(
+              payload.feed_forward)) {
         faults::set(
             fault_flags,
             FaultFlag::kInvalidConfiguration);
+
         send_ack(
             packet,
             AckStatus::kInvalidConfiguration);
@@ -314,7 +399,9 @@ void handle_packet(const Packet& packet) {
     }
 
     case MessageType::kCommandClearFaults:
-      faults::clear_all(fault_flags);
+      faults::clear_all(
+          fault_flags);
+
       send_ack(
           packet,
           AckStatus::kAccepted);
@@ -323,10 +410,16 @@ void handle_packet(const Packet& packet) {
     case MessageType::kHeartbeat: {
       HeartbeatPayload payload{};
 
-      if (!decode_payload(packet, payload)) {
+      if (!decode_payload(
+              packet,
+              payload)) {
         faults::set(
             fault_flags,
             FaultFlag::kProtocolError);
+        return;
+      }
+
+      if (!configured || !enabled) {
         return;
       }
 
@@ -335,7 +428,6 @@ void handle_packet(const Packet& packet) {
       faults::clear(
           fault_flags,
           FaultFlag::kHeartbeatTimeout);
-
       return;
     }
 
@@ -355,9 +447,11 @@ void process_serial() {
   Packet packet{};
 
   while (control_serial.available() > 0) {
-    const int value = control_serial.read();
+    const int value =
+        control_serial.read();
 
-    if (value >= 0 &&
+    if (
+        value >= 0 &&
         parser.push(
             static_cast<uint8_t>(value),
             packet)) {
@@ -367,9 +461,11 @@ void process_serial() {
 }
 
 void update_control() {
-  const uint32_t now_us = micros();
+  const uint32_t now_us =
+      micros();
 
-  if (now_us - last_control_us <
+  if (
+      now_us - last_control_us <
       config::kControlPeriodUs) {
     return;
   }
@@ -381,26 +477,41 @@ void update_control() {
 
   last_control_us = now_us;
 
+  if (
+      !std::isfinite(dt) ||
+      dt <= 0.0F) {
+    stop_motion();
+
+    faults::set(
+        fault_flags,
+        FaultFlag::kProtocolError);
+    return;
+  }
+
   const int64_t left_ticks =
       left_encoder.ticks();
+
   const int64_t right_ticks =
       right_encoder.ticks();
 
-  if (configured &&
+  if (
+      configured &&
       ticks_per_revolution > 0.0F) {
     constexpr float kTwoPi =
         6.28318530717958647692F;
 
     left_velocity =
         static_cast<float>(
-            left_ticks - previous_left_ticks) *
+            left_ticks -
+            previous_left_ticks) *
         kTwoPi /
         ticks_per_revolution /
         dt;
 
     right_velocity =
         static_cast<float>(
-            right_ticks - previous_right_ticks) *
+            right_ticks -
+            previous_right_ticks) *
         kTwoPi /
         ticks_per_revolution /
         dt;
@@ -412,22 +523,28 @@ void update_control() {
   previous_left_ticks = left_ticks;
   previous_right_ticks = right_ticks;
 
-  const uint32_t now_ms = millis();
+  const uint32_t now_ms =
+      millis();
 
-  if (enabled &&
+  if (
+      enabled &&
       now_ms - last_command_ms >
           config::kCommandTimeoutMs) {
     faults::set(
         fault_flags,
         FaultFlag::kCommandTimeout);
+
     stop_motion();
   }
 
-  if (now_ms - last_heartbeat_ms >
-      config::kHeartbeatTimeoutMs) {
+  if (
+      enabled &&
+      now_ms - last_heartbeat_ms >
+          config::kHeartbeatTimeoutMs) {
     faults::set(
         fault_flags,
         FaultFlag::kHeartbeatTimeout);
+
     stop_motion();
   }
 
@@ -451,9 +568,11 @@ void update_control() {
 }
 
 void publish_telemetry() {
-  const uint32_t now_us = micros();
+  const uint32_t now_us =
+      micros();
 
-  if (now_us - last_telemetry_us <
+  if (
+      now_us - last_telemetry_us <
       config::kTelemetryPeriodUs) {
     return;
   }
