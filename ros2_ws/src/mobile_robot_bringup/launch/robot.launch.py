@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 
 from __future__ import annotations
@@ -78,6 +79,16 @@ def _launch_setup(context: LaunchContext):
         )
         / "launch"
         / "mobile_robot_control.launch.py"
+    )
+
+    diagnostics_launch = (
+        Path(
+            get_package_share_directory(
+                "mobile_robot_diagnostics"
+            )
+        )
+        / "launch"
+        / "diagnostics.launch.py"
     )
 
     arguments = {
@@ -253,7 +264,12 @@ def _launch_setup(context: LaunchContext):
                 str(control_launch)
             ),
             launch_arguments=arguments.items(),
-        )
+        ),
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                str(diagnostics_launch)
+            )
+        ),
     ]
 
 

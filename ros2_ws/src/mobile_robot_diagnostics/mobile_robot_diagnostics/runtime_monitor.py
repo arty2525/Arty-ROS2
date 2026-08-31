@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
+
 from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Optional
+
 import rclpy
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from nav_msgs.msg import Odometry
@@ -36,13 +39,16 @@ class RuntimeMonitor(Node):
         self.declare_parameter("odom_timeout_sec", 1.0)
         self.declare_parameter("joint_states_topic", "/joint_states")
         self.declare_parameter("odom_topic", "/diff_drive_controller/odom")
+
         publish_rate_hz = float(self.get_parameter("publish_rate_hz").value)
         joint_timeout = float(self.get_parameter("joint_states_timeout_sec").value)
         odom_timeout = float(self.get_parameter("odom_timeout_sec").value)
         joint_topic = str(self.get_parameter("joint_states_topic").value)
         odom_topic = str(self.get_parameter("odom_topic").value)
+
         if publish_rate_hz <= 0.0 or joint_timeout <= 0.0 or odom_timeout <= 0.0:
             raise ValueError("diagnostic rates and timeouts must be greater than zero")
+
         self._joint_watch = TopicWatch(joint_topic, joint_timeout)
         self._odom_watch = TopicWatch(odom_topic, odom_timeout)
         self._publisher = self.create_publisher(DiagnosticArray, "/diagnostics", 10)
@@ -65,6 +71,7 @@ class RuntimeMonitor(Node):
         status = DiagnosticStatus()
         status.name = f"Arty-ROS2 topic: {watch.name}"
         status.hardware_id = "arty_ros2"
+
         if age is None:
             status.level = DiagnosticStatus.WARN
             status.message = "ยังไม่เคยได้รับข้อมูล"
@@ -77,6 +84,7 @@ class RuntimeMonitor(Node):
             status.level = DiagnosticStatus.ERROR
             status.message = "ข้อมูลขาดหายเกินเวลาที่กำหนด"
             age_text = f"{age:.3f}"
+
         status.values = [
             KeyValue(key="topic", value=watch.name),
             KeyValue(key="timeout_seconds", value=f"{watch.timeout_seconds:.3f}"),
@@ -86,10 +94,13 @@ class RuntimeMonitor(Node):
 
     def _publish(self) -> None:
         now = self.get_clock().now()
-        msg = DiagnosticArray()
-        msg.header.stamp = now.to_msg()
-        msg.status = [self._status(self._joint_watch, now.nanoseconds), self._status(self._odom_watch, now.nanoseconds)]
-        self._publisher.publish(msg)
+        message = DiagnosticArray()
+        message.header.stamp = now.to_msg()
+        message.status = [
+            self._status(self._joint_watch, now.nanoseconds),
+            self._status(self._odom_watch, now.nanoseconds),
+        ]
+        self._publisher.publish(message)
 
 
 def main(args=None) -> None:
@@ -101,7 +112,8 @@ def main(args=None) -> None:
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":
