@@ -22,6 +22,11 @@ _REQUIRED_POSITIVE = (
     "max_angular_velocity", "max_angular_acceleration",
 )
 
+_REQUIRED_BOOLEAN = (
+    "left_motor_inverted", "right_motor_inverted",
+    "left_encoder_inverted", "right_encoder_inverted",
+)
+
 
 def _float_argument(context: LaunchContext, name: str) -> float:
     try:
@@ -31,6 +36,13 @@ def _float_argument(context: LaunchContext, name: str) -> float:
     if not math.isfinite(value) or value <= 0.0:
         raise RuntimeError(f"Launch argument '{name}' must be finite and greater than zero")
     return value
+
+
+def _boolean_argument(context: LaunchContext, name: str) -> str:
+    raw = LaunchConfiguration(name).perform(context).strip().lower()
+    if raw not in {"true", "false"}:
+        raise RuntimeError(f"Launch argument '{name}' must be true or false")
+    return raw
 
 
 def _create_controller_file(context: LaunchContext, values: dict[str, float]) -> str:
@@ -76,10 +88,17 @@ def _cleanup(context: LaunchContext, *_) -> None:
 
 def _launch_setup(context: LaunchContext):
     values = {name: _float_argument(context, name) for name in _REQUIRED_POSITIVE}
+    booleans = {name: _boolean_argument(context, name) for name in _REQUIRED_BOOLEAN}
     serial_device = LaunchConfiguration("serial_device").perform(context)
     baud_rate = LaunchConfiguration("baud_rate").perform(context)
     if not serial_device:
         raise RuntimeError("serial_device must not be empty")
+    try:
+        parsed_baud = int(baud_rate)
+    except ValueError as error:
+        raise RuntimeError("baud_rate must be an integer") from error
+    if parsed_baud <= 0:
+        raise RuntimeError("baud_rate must be greater than zero")
 
     controller_file = _create_controller_file(context, values)
     description_file = (
@@ -90,8 +109,12 @@ def _launch_setup(context: LaunchContext):
         Command([
             "xacro ", str(description_file),
             " serial_device:=", serial_device,
-            " baud_rate:=", baud_rate,
+            " baud_rate:=", str(parsed_baud),
             " ticks_per_revolution:=", str(values["ticks_per_revolution"]),
+            " left_motor_inverted:=", booleans["left_motor_inverted"],
+            " right_motor_inverted:=", booleans["right_motor_inverted"],
+            " left_encoder_inverted:=", booleans["left_encoder_inverted"],
+            " right_encoder_inverted:=", booleans["right_encoder_inverted"],
             " wheel_radius:=", str(values["wheel_radius"]),
             " wheel_separation:=", str(values["wheel_separation"]),
             " wheel_width:=", str(values["wheel_width"]),
@@ -143,6 +166,10 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument("base_width", default_value="0.0"),
         DeclareLaunchArgument("base_height", default_value="0.0"),
         DeclareLaunchArgument("ticks_per_revolution", default_value="0.0"),
+        DeclareLaunchArgument("left_motor_inverted", default_value="false"),
+        DeclareLaunchArgument("right_motor_inverted", default_value="false"),
+        DeclareLaunchArgument("left_encoder_inverted", default_value="false"),
+        DeclareLaunchArgument("right_encoder_inverted", default_value="false"),
         DeclareLaunchArgument("max_linear_velocity", default_value="0.0"),
         DeclareLaunchArgument("max_linear_acceleration", default_value="0.0"),
         DeclareLaunchArgument("max_angular_velocity", default_value="0.0"),
