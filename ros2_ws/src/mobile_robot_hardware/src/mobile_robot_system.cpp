@@ -9,10 +9,7 @@
 #include <cmath>
 #include <cstring>
 #include <stdexcept>
-#include <utility>
 
-#include "diagnostic_msgs/msg/diagnostic_status.hpp"
-#include "diagnostic_msgs/msg/key_value.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "mobile_robot_hardware/protocol.hpp"
 #include "pluginlib/class_list_macros.hpp"
@@ -23,7 +20,8 @@ namespace {
 constexpr double kTwoPi = 6.28318530717958647692;
 constexpr auto kAckTimeout = std::chrono::milliseconds(500);
 constexpr auto kHeartbeatPeriod = std::chrono::milliseconds(250);
-constexpr auto kDiagnosticsPeriod = std::chrono::milliseconds(500);
+constexpr const char* kLeftWheelJoint = "left_wheel_joint";
+constexpr const char* kRightWheelJoint = "right_wheel_joint";
 
 speed_t to_termios_baud(const int baud) {
   switch (baud) {
@@ -44,23 +42,33 @@ double required_positive_parameter(const hardware_interface::HardwareInfo& info,
   return value;
 }
 
-int optional_positive_integer_parameter(const hardware_interface::HardwareInfo& info, const std::string& name, const int default_value) {
+int required_positive_integer_parameter(const hardware_interface::HardwareInfo& info, const std::string& name) {
   const auto it = info.hardware_parameters.find(name);
-  if (it == info.hardware_parameters.end()) return default_value;
+  if (it == info.hardware_parameters.end()) throw std::runtime_error("Missing hardware parameter: " + name);
   const int value = std::stoi(it->second);
   if (value <= 0) throw std::runtime_error("Hardware parameter must be > 0: " + name);
   return value;
 }
 
-int64_t steady_now_nanoseconds() {
-  return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+bool required_boolean_parameter(const hardware_interface::HardwareInfo& info, const std::string& name) {
+  const auto it = info.hardware_parameters.find(name);
+  if (it == info.hardware_parameters.end()) throw std::runtime_error("Missing hardware parameter: " + name);
+  if (it->second == "true" || it->second == "1") return true;
+  if (it->second == "false" || it->second == "0") return false;
+  throw std::runtime_error("Hardware parameter must be true/false or 1/0: " + name);
 }
 
-diagnostic_msgs::msg::KeyValue key_value(const std::string& key, const std::string& value) {
-  diagnostic_msgs::msg::KeyValue output;
-  output.key = key;
-  output.value = value;
-  return output;
+bool validate_joint_interfaces(const hardware_interface::ComponentInfo& joint) {
+  if (joint.command_interfaces.size() != 1U || joint.command_interfaces[0].name != hardware_interface::HW_IF_VELOCITY) return false;
+  if (joint.state_interfaces.size() != 2U) return false;
+  bool has_position = false;
+  bool has_velocity = false;
+  for (const auto& state : joint.state_interfaces) {
+    if (state.name == hardware_interface::HW_IF_POSITION) has_position = true;
+    else if (state.name == hardware_interface::HW_IF_VELOCITY) has_velocity = true;
+    else return false;
+  }
+  return has_position && has_velocity;
 }
 }  // namespace
 
@@ -70,30 +78,44 @@ hardware_interface::CallbackReturn MobileRobotSystem::on_init(const hardware_int
     RCLCPP_ERROR(get_logger(), "Exactly two wheel joints are required; received %zu", info_.joints.size());
     return hardware_interface::CallbackReturn::ERROR;
   }
-  for (const auto& joint : info_.joints) {
-    if (joint.command_interfaces.size() != 1U || joint.command_interfaces[0].name != hardware_interface::HW_IF_VELOCITY) {
-      RCLCPP_ERROR(get_logger(), "Joint '%s' must export exactly one velocity command interface", joint.name.c_str());
+
+  bool have_left = false;
+  bool have_right = false;
+  for (std::size_t index = 0U; index < info_.joints.size(); ++index) {
+    const auto& joint = info_.joints[index];
+    if (!validate_joint_interfaces(joint)) {
+      RCLCPP_ERROR(get_logger(), "Joint '%s' must contain exactly one velocity command interface and exactly position+velocity state interfaces", joint.name.c_str());
       return hardware_interface::CallbackReturn::ERROR;
     }
-    bool has_position = false;
-    bool has_velocity = false;
-    for (const auto& state : joint.state_interfaces) {
-      has_position = has_position || state.name == hardware_interface::HW_IF_POSITION;
-      has_velocity = has_velocity || state.name == hardware_interface::HW_IF_VELOCITY;
-    }
-    if (!has_position || !has_velocity) {
-      RCLCPP_ERROR(get_logger(), "Joint '%s' must export position and velocity state interfaces", joint.name.c_str());
+    if (joint.name == kLeftWheelJoint) {
+      if (have_left) return hardware_interface::CallbackReturn::ERROR;
+      left_joint_index_ = index;
+      have_left = true;
+    } else if (joint.name == kRightWheelJoint) {
+      if (have_right) return hardware_interface::CallbackReturn::ERROR;
+      right_joint_index_ = index;
+      have_right = true;
+    } else {
+      RCLCPP_ERROR(get_logger(), "Unsupported joint '%s'; expected '%s' and '%s'", joint.name.c_str(), kLeftWheelJoint, kRightWheelJoint);
       return hardware_interface::CallbackReturn::ERROR;
     }
   }
+  if (!have_left || !have_right) return hardware_interface::CallbackReturn::ERROR;
+
   try {
     const auto device_it = info_.hardware_parameters.find("serial_device");
     const auto baud_it = info_.hardware_parameters.find("baud_rate");
     if (device_it == info_.hardware_parameters.end() || baud_it == info_.hardware_parameters.end()) throw std::runtime_error("serial_device and baud_rate are required");
     serial_device_ = device_it->second;
     baud_rate_ = std::stoi(baud_it->second);
+    if (serial_device_.empty()) throw std::runtime_error("serial_device must not be empty");
+    (void)to_termios_baud(baud_rate_);
     ticks_per_revolution_ = required_positive_parameter(info_, "ticks_per_revolution");
-    telemetry_timeout_ms_ = optional_positive_integer_parameter(info_, "telemetry_timeout_ms", 500);
+    telemetry_timeout_ms_ = required_positive_integer_parameter(info_, "telemetry_timeout_ms");
+    left_motor_inverted_ = required_boolean_parameter(info_, "left_motor_inverted");
+    right_motor_inverted_ = required_boolean_parameter(info_, "right_motor_inverted");
+    left_encoder_inverted_ = required_boolean_parameter(info_, "left_encoder_inverted");
+    right_encoder_inverted_ = required_boolean_parameter(info_, "right_encoder_inverted");
   } catch (const std::exception& error) {
     RCLCPP_ERROR(get_logger(), "%s", error.what());
     return hardware_interface::CallbackReturn::ERROR;
@@ -109,63 +131,58 @@ hardware_interface::CallbackReturn MobileRobotSystem::on_configure(const rclcpp_
     return hardware_interface::CallbackReturn::ERROR;
   }
   left_position_ = right_position_ = left_velocity_ = right_velocity_ = left_command_ = right_command_ = 0.0;
-  diagnostic_last_telemetry_ns_.store(0);
-  diagnostic_left_ticks_.store(0);
-  diagnostic_right_ticks_.store(0);
-  diagnostic_left_velocity_.store(0.0);
-  diagnostic_right_velocity_.store(0.0);
-  diagnostic_fault_flags_.store(0U);
-  diagnostic_configured_.store(true);
-  diagnostic_enabled_.store(false);
-  last_heartbeat_ = std::chrono::steady_clock::now();
-  start_diagnostics();
+  last_fault_flags_ = 0U;
+  have_received_telemetry_ = false;
+  const auto now = std::chrono::steady_clock::now();
+  last_heartbeat_ = now;
+  last_telemetry_ = now;
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
 hardware_interface::CallbackReturn MobileRobotSystem::on_activate(const rclcpp_lifecycle::State&) {
   left_command_ = right_command_ = 0.0;
   if (!set_firmware_enabled(true)) {
-    diagnostic_enabled_.store(false);
     RCLCPP_ERROR(get_logger(), "ESP32 rejected enable command");
     return hardware_interface::CallbackReturn::ERROR;
   }
-  diagnostic_enabled_.store(true);
+  const auto now = std::chrono::steady_clock::now();
+  last_heartbeat_ = now;
+  last_telemetry_ = now;
+  have_received_telemetry_ = false;
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
 hardware_interface::CallbackReturn MobileRobotSystem::on_deactivate(const rclcpp_lifecycle::State&) {
   left_command_ = right_command_ = 0.0;
-  send_velocity();
+  (void)send_velocity();
   if (!set_firmware_enabled(false)) {
     RCLCPP_ERROR(get_logger(), "Failed to confirm ESP32 disable command");
     return hardware_interface::CallbackReturn::ERROR;
   }
-  diagnostic_enabled_.store(false);
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
 hardware_interface::CallbackReturn MobileRobotSystem::on_cleanup(const rclcpp_lifecycle::State&) {
-  if (serial_fd_ >= 0) set_firmware_enabled(false);
-  diagnostic_enabled_.store(false);
-  diagnostic_configured_.store(false);
-  stop_diagnostics();
+  if (serial_fd_ >= 0) (void)set_firmware_enabled(false);
   close_serial();
+  have_received_telemetry_ = false;
+  last_fault_flags_ = 0U;
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
 std::vector<hardware_interface::StateInterface> MobileRobotSystem::export_state_interfaces() {
   std::vector<hardware_interface::StateInterface> v;
-  v.emplace_back(info_.joints[0].name, hardware_interface::HW_IF_POSITION, &left_position_);
-  v.emplace_back(info_.joints[0].name, hardware_interface::HW_IF_VELOCITY, &left_velocity_);
-  v.emplace_back(info_.joints[1].name, hardware_interface::HW_IF_POSITION, &right_position_);
-  v.emplace_back(info_.joints[1].name, hardware_interface::HW_IF_VELOCITY, &right_velocity_);
+  v.emplace_back(info_.joints[left_joint_index_].name, hardware_interface::HW_IF_POSITION, &left_position_);
+  v.emplace_back(info_.joints[left_joint_index_].name, hardware_interface::HW_IF_VELOCITY, &left_velocity_);
+  v.emplace_back(info_.joints[right_joint_index_].name, hardware_interface::HW_IF_POSITION, &right_position_);
+  v.emplace_back(info_.joints[right_joint_index_].name, hardware_interface::HW_IF_VELOCITY, &right_velocity_);
   return v;
 }
 
 std::vector<hardware_interface::CommandInterface> MobileRobotSystem::export_command_interfaces() {
   std::vector<hardware_interface::CommandInterface> v;
-  v.emplace_back(info_.joints[0].name, hardware_interface::HW_IF_VELOCITY, &left_command_);
-  v.emplace_back(info_.joints[1].name, hardware_interface::HW_IF_VELOCITY, &right_command_);
+  v.emplace_back(info_.joints[left_joint_index_].name, hardware_interface::HW_IF_VELOCITY, &left_command_);
+  v.emplace_back(info_.joints[right_joint_index_].name, hardware_interface::HW_IF_VELOCITY, &right_command_);
   return v;
 }
 
@@ -175,32 +192,32 @@ hardware_interface::return_type MobileRobotSystem::read(const rclcpp::Time&, con
     const auto packet = protocol::decode_frame(frame);
     if (!packet || packet->header.type != static_cast<uint8_t>(protocol::MessageType::kTelemetry)) continue;
     protocol::TelemetryPayload telemetry{};
-    if (!protocol::decode_payload(*packet, telemetry)) continue;
-    diagnostic_last_telemetry_ns_.store(steady_now_nanoseconds(), std::memory_order_relaxed);
-    diagnostic_left_ticks_.store(telemetry.left_ticks, std::memory_order_relaxed);
-    diagnostic_right_ticks_.store(telemetry.right_ticks, std::memory_order_relaxed);
-    diagnostic_left_velocity_.store(telemetry.left_velocity_rad_per_sec, std::memory_order_relaxed);
-    diagnostic_right_velocity_.store(telemetry.right_velocity_rad_per_sec, std::memory_order_relaxed);
-    diagnostic_fault_flags_.store(telemetry.fault_flags, std::memory_order_relaxed);
-    diagnostic_configured_.store(telemetry.configured != 0U, std::memory_order_relaxed);
-    diagnostic_enabled_.store(telemetry.enabled != 0U, std::memory_order_relaxed);
-    if (telemetry.configured == 0U) {
-      RCLCPP_ERROR(get_logger(), "ESP32 lost configured state");
-      return hardware_interface::return_type::ERROR;
-    }
+    if (!protocol::decode_payload(*packet, telemetry)) return hardware_interface::return_type::ERROR;
+    if (telemetry.configured == 0U) return hardware_interface::return_type::ERROR;
+    if (!std::isfinite(telemetry.left_velocity_rad_per_sec) || !std::isfinite(telemetry.right_velocity_rad_per_sec)) return hardware_interface::return_type::ERROR;
     left_position_ = static_cast<double>(telemetry.left_ticks) * kTwoPi / ticks_per_revolution_;
     right_position_ = static_cast<double>(telemetry.right_ticks) * kTwoPi / ticks_per_revolution_;
     left_velocity_ = telemetry.left_velocity_rad_per_sec;
     right_velocity_ = telemetry.right_velocity_rad_per_sec;
+    last_fault_flags_ = telemetry.fault_flags;
+    last_telemetry_ = std::chrono::steady_clock::now();
+    have_received_telemetry_ = true;
+  }
+
+  const auto now = std::chrono::steady_clock::now();
+  if (now - last_telemetry_ > std::chrono::milliseconds(telemetry_timeout_ms_)) {
+    RCLCPP_ERROR(get_logger(), "ESP32 telemetry timeout: no valid telemetry for more than %d ms", telemetry_timeout_ms_);
+    return hardware_interface::return_type::ERROR;
+  }
+  if (last_fault_flags_ != 0U) {
+    RCLCPP_ERROR(get_logger(), "ESP32 fault_flags=0x%08X", static_cast<unsigned int>(last_fault_flags_));
+    return hardware_interface::return_type::ERROR;
   }
   return hardware_interface::return_type::OK;
 }
 
 hardware_interface::return_type MobileRobotSystem::write(const rclcpp::Time&, const rclcpp::Duration&) {
-  if (!std::isfinite(left_command_) || !std::isfinite(right_command_)) {
-    RCLCPP_ERROR(get_logger(), "Non-finite wheel command rejected");
-    return hardware_interface::return_type::ERROR;
-  }
+  if (!std::isfinite(left_command_) || !std::isfinite(right_command_)) return hardware_interface::return_type::ERROR;
   if (!send_velocity()) return hardware_interface::return_type::ERROR;
   const auto now = std::chrono::steady_clock::now();
   if (now - last_heartbeat_ >= kHeartbeatPeriod) {
@@ -213,10 +230,7 @@ hardware_interface::return_type MobileRobotSystem::write(const rclcpp::Time&, co
 bool MobileRobotSystem::open_serial() {
   close_serial();
   serial_fd_ = ::open(serial_device_.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
-  if (serial_fd_ < 0) {
-    RCLCPP_ERROR(get_logger(), "Cannot open serial device '%s': %s", serial_device_.c_str(), std::strerror(errno));
-    return false;
-  }
+  if (serial_fd_ < 0) return false;
   termios tty{};
   if (tcgetattr(serial_fd_, &tty) != 0) { close_serial(); return false; }
   const speed_t speed = to_termios_baud(baud_rate_);
@@ -231,11 +245,18 @@ bool MobileRobotSystem::open_serial() {
   return true;
 }
 
-void MobileRobotSystem::close_serial() { if (serial_fd_ >= 0) { ::close(serial_fd_); serial_fd_ = -1; } }
+void MobileRobotSystem::close_serial() {
+  if (serial_fd_ >= 0) { ::close(serial_fd_); serial_fd_ = -1; }
+}
 
 bool MobileRobotSystem::configure_firmware() {
   const uint16_t seq = sequence_++;
-  const protocol::ConfigurePayload p{static_cast<float>(ticks_per_revolution_)};
+  const protocol::ConfigurePayload p{
+      static_cast<float>(ticks_per_revolution_),
+      static_cast<uint8_t>(left_motor_inverted_ ? 1U : 0U),
+      static_cast<uint8_t>(right_motor_inverted_ ? 1U : 0U),
+      static_cast<uint8_t>(left_encoder_inverted_ ? 1U : 0U),
+      static_cast<uint8_t>(right_encoder_inverted_ ? 1U : 0U)};
   return write_all(protocol::encode_frame(protocol::MessageType::kCommandConfigure, seq, p)) && wait_for_ack(seq, static_cast<uint8_t>(protocol::MessageType::kCommandConfigure), kAckTimeout);
 }
 
@@ -276,7 +297,7 @@ bool MobileRobotSystem::read_one_frame(std::vector<uint8_t>& frame, std::chrono:
   frame.clear();
   if (serial_fd_ < 0) return false;
   auto read_exact = [&](uint8_t* dst, std::size_t len) {
-    std::size_t got = 0;
+    std::size_t got = 0U;
     const auto deadline = std::chrono::steady_clock::now() + timeout;
     while (got < len) {
       const auto now = std::chrono::steady_clock::now();
@@ -300,7 +321,7 @@ bool MobileRobotSystem::read_one_frame(std::vector<uint8_t>& frame, std::chrono:
 
 bool MobileRobotSystem::write_all(const std::vector<uint8_t>& data) {
   if (serial_fd_ < 0) return false;
-  std::size_t written = 0;
+  std::size_t written = 0U;
   while (written < data.size()) {
     const ssize_t n = ::write(serial_fd_, data.data() + written, data.size() - written);
     if (n < 0) {
@@ -314,70 +335,6 @@ bool MobileRobotSystem::write_all(const std::vector<uint8_t>& data) {
     written += static_cast<std::size_t>(n);
   }
   return true;
-}
-
-void MobileRobotSystem::start_diagnostics() {
-  const auto node = get_node();
-  if (!node) {
-    RCLCPP_WARN(get_logger(), "Hardware framework-managed node unavailable; diagnostics disabled");
-    return;
-  }
-  diagnostics_publisher_ = node->create_publisher<diagnostic_msgs::msg::DiagnosticArray>("/diagnostics", rclcpp::QoS(10));
-  diagnostics_timer_ = node->create_wall_timer(kDiagnosticsPeriod, [this]() { publish_hardware_diagnostics(); });
-}
-
-void MobileRobotSystem::stop_diagnostics() {
-  diagnostics_timer_.reset();
-  diagnostics_publisher_.reset();
-}
-
-void MobileRobotSystem::publish_hardware_diagnostics() {
-  if (!diagnostics_publisher_) return;
-  const int64_t now_ns = steady_now_nanoseconds();
-  const int64_t last_ns = diagnostic_last_telemetry_ns_.load(std::memory_order_relaxed);
-  const bool configured = diagnostic_configured_.load(std::memory_order_relaxed);
-  const bool enabled = diagnostic_enabled_.load(std::memory_order_relaxed);
-  const uint32_t fault_flags = diagnostic_fault_flags_.load(std::memory_order_relaxed);
-  double telemetry_age_ms = -1.0;
-  if (last_ns > 0) telemetry_age_ms = static_cast<double>(now_ns - last_ns) / 1'000'000.0;
-
-  diagnostic_msgs::msg::DiagnosticStatus status;
-  status.name = "Arty-ROS2 ESP32 base hardware";
-  status.hardware_id = "esp32_base_controller";
-  if (!configured) {
-    status.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
-    status.message = "ESP32 is not configured";
-  } else if (telemetry_age_ms < 0.0 || telemetry_age_ms > static_cast<double>(telemetry_timeout_ms_)) {
-    status.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
-    status.message = "ESP32 telemetry timeout";
-  } else if (fault_flags != 0U) {
-    status.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
-    status.message = "ESP32 reported fault flags";
-  } else {
-    status.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
-    status.message = enabled ? "Configured, enabled, telemetry healthy" : "Configured, disabled, telemetry healthy";
-  }
-
-  status.values = {
-    key_value("serial_device", serial_device_),
-    key_value("baud_rate", std::to_string(baud_rate_)),
-    key_value("ticks_per_revolution", std::to_string(ticks_per_revolution_)),
-    key_value("telemetry_timeout_ms", std::to_string(telemetry_timeout_ms_)),
-    key_value("telemetry_age_ms", telemetry_age_ms < 0.0 ? "never" : std::to_string(telemetry_age_ms)),
-    key_value("configured", configured ? "true" : "false"),
-    key_value("enabled", enabled ? "true" : "false"),
-    key_value("fault_flags", std::to_string(fault_flags)),
-    key_value("left_ticks", std::to_string(diagnostic_left_ticks_.load(std::memory_order_relaxed))),
-    key_value("right_ticks", std::to_string(diagnostic_right_ticks_.load(std::memory_order_relaxed))),
-    key_value("left_velocity_rad_per_sec", std::to_string(diagnostic_left_velocity_.load(std::memory_order_relaxed))),
-    key_value("right_velocity_rad_per_sec", std::to_string(diagnostic_right_velocity_.load(std::memory_order_relaxed)))
-  };
-
-  diagnostic_msgs::msg::DiagnosticArray message;
-  const auto node = get_node();
-  if (node) message.header.stamp = node->get_clock()->now().to_msg();
-  message.status.push_back(std::move(status));
-  diagnostics_publisher_->publish(message);
 }
 
 }  // namespace mobile_robot_hardware
