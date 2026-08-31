@@ -29,6 +29,13 @@ def _require(mapping: dict, path: tuple[str, ...]):
     return value
 
 
+def _require_bool(mapping: dict, path: tuple[str, ...]) -> bool:
+    value = _require(mapping, path)
+    if not isinstance(value, bool):
+        raise RuntimeError("Robot configuration key must be boolean: " + ".".join(path))
+    return value
+
+
 def _launch_setup(context: LaunchContext):
     config_path = LaunchConfiguration("config").perform(context)
     configuration = _load_configuration(config_path)
@@ -49,6 +56,10 @@ def _launch_setup(context: LaunchContext):
         "base_width": str(_require(configuration, ("geometry", "base_width"))),
         "base_height": str(_require(configuration, ("geometry", "base_height"))),
         "ticks_per_revolution": str(_require(configuration, ("encoder", "ticks_per_revolution"))),
+        "left_motor_inverted": "true" if _require_bool(configuration, ("inversion", "left_motor")) else "false",
+        "right_motor_inverted": "true" if _require_bool(configuration, ("inversion", "right_motor")) else "false",
+        "left_encoder_inverted": "true" if _require_bool(configuration, ("inversion", "left_encoder")) else "false",
+        "right_encoder_inverted": "true" if _require_bool(configuration, ("inversion", "right_encoder")) else "false",
         "max_linear_velocity": str(_require(configuration, ("limits", "max_linear_velocity"))),
         "max_linear_acceleration": str(_require(configuration, ("limits", "max_linear_acceleration"))),
         "max_angular_velocity": str(_require(configuration, ("limits", "max_angular_velocity"))),
@@ -69,9 +80,7 @@ def generate_launch_description() -> LaunchDescription:
         / "config"
         / "robot.yaml"
     )
-    return LaunchDescription(
-        [
-            DeclareLaunchArgument("config", default_value=str(default_config)),
-            OpaqueFunction(function=_launch_setup),
-        ]
-    )
+    return LaunchDescription([
+        DeclareLaunchArgument("config", default_value=str(default_config)),
+        OpaqueFunction(function=_launch_setup),
+    ])
