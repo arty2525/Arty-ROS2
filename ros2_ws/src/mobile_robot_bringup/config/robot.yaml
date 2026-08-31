@@ -8,12 +8,28 @@ communication:
   telemetry_timeout_ms: 500
 
 geometry:
-  wheel_radius: 0.0
+  # ล้อขับหลักเส้นผ่านศูนย์กลาง 65 mm
+  wheel_radius: 0.0325
+
+  # ต้องวัดจากกึ่งกลางล้อซ้ายถึงกึ่งกลางล้อขวา
   wheel_separation: 0.0
+
+  # ต้องวัดความกว้างหน้ายางจริง
   wheel_width: 0.0
+
+  # ต้องวัดตัวถังจริง
   base_length: 0.0
   base_width: 0.0
   base_height: 0.0
+
+  # Caster Ball ด้านหน้าและด้านหลัง
+  # ต้องวัดรัศมีลูกบอลจริง
+  caster_ball_radius: 0.0
+
+  # ระยะจากศูนย์กลางฐานถึงศูนย์กลาง Caster Ball
+  # ใช้ค่าบวกทั้งสองด้าน โดย URDF จะวางหน้าเป็น +X และหลังเป็น -X
+  front_caster_offset: 0.0
+  rear_caster_offset: 0.0
 
 encoder:
   ticks_per_revolution: 0.0
