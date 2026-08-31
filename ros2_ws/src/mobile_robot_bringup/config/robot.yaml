@@ -1,0 +1,22 @@
+# Production configuration.
+# ค่าศูนย์หมายถึง "ยังไม่ผ่านการวัด/ยืนยัน" และ launch จะปฏิเสธการเริ่มระบบ
+
+serial_device: /dev/serial0
+baud_rate: 115200
+
+geometry:
+  wheel_radius: 0.0
+  wheel_separation: 0.0
+  wheel_width: 0.0
+  base_length: 0.0
+  base_width: 0.0
+  base_height: 0.0
+
+encoder:
+  ticks_per_revolution: 0.0
+
+limits:
+  max_linear_velocity: 0.0
+  max_linear_acceleration: 0.0
+  max_angular_velocity: 0.0
+  max_angular_acceleration: 0.0
