@@ -1,0 +1,3 @@
+-r requirements-docs.txt
+
+platformio==6.1.18

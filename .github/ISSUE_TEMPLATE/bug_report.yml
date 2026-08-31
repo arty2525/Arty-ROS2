@@ -1,0 +1,75 @@
+name: รายงานปัญหา
+description: รายงานข้อผิดพลาดของ Arty-ROS2
+title: "[BUG] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        กรุณาให้ข้อมูลที่ตรวจสอบซ้ำได้ และหลีกเลี่ยงการคาดเดาค่าฮาร์ดแวร์
+
+  - type: textarea
+    id: description
+    attributes:
+      label: อาการ
+      description: อธิบายสิ่งที่เกิดขึ้นจริง
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: ผลที่คาดหวัง
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: ขั้นตอนที่ทำให้เกิดปัญหา
+    validations:
+      required: true
+
+  - type: dropdown
+    id: subsystem
+    attributes:
+      label: Subsystem
+      options:
+        - ESP32 firmware
+        - UART
+        - ros2_control
+        - diff_drive_controller
+        - Encoder
+        - Motor driver
+        - Bringup
+        - Documentation
+        - CI
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: ros
+    attributes:
+      label: ROS 2
+      value: Jazzy
+
+  - type: input
+    id: ubuntu
+    attributes:
+      label: Ubuntu
+      value: "24.04 LTS"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      render: shell
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety
+      options:
+        - label: หากปัญหาเกี่ยวกับมอเตอร์ ฉันได้หยุดมอเตอร์และทำให้ระบบอยู่ในสภาวะปลอดภัยก่อนตรวจสอบ

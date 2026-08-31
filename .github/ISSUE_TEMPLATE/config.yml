@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: เอกสารโครงการ
+    url: https://arty2525.github.io/Arty-ROS2/
+    about: ตรวจสอบเอกสารก่อนเปิด Issue ใหม่
