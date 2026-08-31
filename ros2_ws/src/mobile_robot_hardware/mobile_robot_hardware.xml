@@ -1,0 +1,2 @@
+<?xml version="1.0"?>
+<library path="mobile_robot_hardware"><class name="mobile_robot_hardware/MobileRobotSystem" type="mobile_robot_hardware::MobileRobotSystem" base_class_type="hardware_interface::SystemInterface"><description>UART ros2_control SystemInterface สำหรับ Raspberry Pi 4 และ ESP32</description></class></library>

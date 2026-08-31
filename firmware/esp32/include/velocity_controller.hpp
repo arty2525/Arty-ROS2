@@ -1,0 +1,2 @@
+#pragma once
+namespace mobile_robot { class VelocityController { public: void configure(float kp,float ki,float kd,float feed_forward,float integrator_limit); void reset(); float update(float target,float measured,float dt_seconds); private: float kp_{0.0F};float ki_{0.0F};float kd_{0.0F};float feed_forward_{0.0F};float integrator_limit_{0.0F};float integrator_{0.0F};float previous_error_{0.0F};bool first_update_{true};}; }
