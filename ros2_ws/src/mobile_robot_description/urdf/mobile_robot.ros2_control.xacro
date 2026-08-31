@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:macro name="mobile_robot_ros2_control" params="name serial_device baud_rate ticks_per_revolution">
+    <ros2_control name="${name}" type="system">
+      <hardware>
+        <plugin>mobile_robot_hardware/MobileRobotSystem</plugin>
+        <param name="serial_device">${serial_device}</param>
+        <param name="baud_rate">${baud_rate}</param>
+        <param name="io_timeout_ms">20</param>
+        <param name="telemetry_timeout_ms">100</param>
+        <param name="ticks_per_revolution">${ticks_per_revolution}</param>
+      </hardware>
+      <joint name="left_wheel_joint">
+        <command_interface name="velocity"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+      <joint name="right_wheel_joint">
+        <command_interface name="velocity"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+    </ros2_control>
+  </xacro:macro>
+</robot>
