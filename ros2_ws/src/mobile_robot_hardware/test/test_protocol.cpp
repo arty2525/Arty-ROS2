@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <bit>
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -9,11 +10,23 @@
 namespace protocol =
     mobile_robot_hardware::protocol;
 
+namespace {
+
+constexpr uint32_t
+    kSerializationSentinelBits =
+        0x3F400000U;
+
+const float kSerializationSentinel =
+    std::bit_cast<float>(
+        kSerializationSentinelBits);
+
+}  // namespace
+
 TEST(
     Protocol,
     ConfigureRoundTrip) {
   const protocol::ConfigurePayload payload{
-      2048.0F,
+      kSerializationSentinel,
       0U,
       1U,
       0U,
@@ -41,9 +54,10 @@ TEST(
           *decoded,
           output));
 
-  EXPECT_FLOAT_EQ(
-      output.ticks_per_revolution,
-      2048.0F);
+  EXPECT_EQ(
+      std::bit_cast<uint32_t>(
+          output.ticks_per_revolution),
+      kSerializationSentinelBits);
 
   EXPECT_EQ(
       output.left_motor_inverted,
@@ -60,6 +74,21 @@ TEST(
   EXPECT_EQ(
       output.right_encoder_inverted,
       1U);
+}
+
+TEST(
+    Protocol,
+    AcceptedAckCompatibilityAliasIsStable) {
+  EXPECT_EQ(
+      static_cast<uint8_t>(
+          protocol::AckStatus::kAccepted),
+      0U);
+
+  EXPECT_EQ(
+      static_cast<uint8_t>(
+          protocol::AckStatus::kOk),
+      static_cast<uint8_t>(
+          protocol::AckStatus::kAccepted));
 }
 
 TEST(
