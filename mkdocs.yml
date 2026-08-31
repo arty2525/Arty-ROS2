@@ -1,0 +1,25 @@
+site_name: Arty-ROS2
+site_description: เอกสารโครงการหุ่นยนต์เคลื่อนที่ ROS 2 Jazzy สำหรับ Raspberry Pi 4 และ ESP32
+site_url: https://arty2525.github.io/Arty-ROS2/
+
+repo_name: arty2525/Arty-ROS2
+repo_url: https://github.com/arty2525/Arty-ROS2
+
+docs_dir: docs
+site_dir: site
+
+theme:
+  name: material
+  language: th
+
+plugins:
+  - search
+  - minify:
+      minify_html: true
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
