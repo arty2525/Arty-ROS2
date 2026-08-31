@@ -1,0 +1,57 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="arty_mobile_robot">
+  <xacro:arg name="serial_device" default="/dev/serial0"/>
+  <xacro:arg name="baud_rate" default="115200"/>
+  <xacro:arg name="ticks_per_revolution" default="0.0"/>
+  <xacro:arg name="left_motor_inverted" default="false"/>
+  <xacro:arg name="right_motor_inverted" default="false"/>
+  <xacro:arg name="left_encoder_inverted" default="false"/>
+  <xacro:arg name="right_encoder_inverted" default="false"/>
+  <xacro:arg name="wheel_radius" default="0.0"/>
+  <xacro:arg name="wheel_separation" default="0.0"/>
+  <xacro:arg name="wheel_width" default="0.0"/>
+  <xacro:arg name="base_length" default="0.0"/>
+  <xacro:arg name="base_width" default="0.0"/>
+  <xacro:arg name="base_height" default="0.0"/>
+
+  <xacro:include filename="$(find mobile_robot_description)/urdf/mobile_robot.ros2_control.xacro"/>
+
+  <link name="base_link">
+    <visual><geometry><box size="$(arg base_length) $(arg base_width) $(arg base_height)"/></geometry></visual>
+    <collision><geometry><box size="$(arg base_length) $(arg base_width) $(arg base_height)"/></geometry></collision>
+  </link>
+
+  <link name="left_wheel_link">
+    <visual><geometry><cylinder radius="$(arg wheel_radius)" length="$(arg wheel_width)"/></geometry></visual>
+    <collision><geometry><cylinder radius="$(arg wheel_radius)" length="$(arg wheel_width)"/></geometry></collision>
+  </link>
+
+  <link name="right_wheel_link">
+    <visual><geometry><cylinder radius="$(arg wheel_radius)" length="$(arg wheel_width)"/></geometry></visual>
+    <collision><geometry><cylinder radius="$(arg wheel_radius)" length="$(arg wheel_width)"/></geometry></collision>
+  </link>
+
+  <joint name="left_wheel_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="left_wheel_link"/>
+    <origin xyz="0 $(eval float(arg('wheel_separation')) / 2.0) 0" rpy="1.57079632679 0 0"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+
+  <joint name="right_wheel_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="right_wheel_link"/>
+    <origin xyz="0 $(eval -float(arg('wheel_separation')) / 2.0) 0" rpy="1.57079632679 0 0"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+
+  <xacro:mobile_robot_ros2_control
+    name="ArtyMobileRobotSystem"
+    serial_device="$(arg serial_device)"
+    baud_rate="$(arg baud_rate)"
+    ticks_per_revolution="$(arg ticks_per_revolution)"
+    left_motor_inverted="$(arg left_motor_inverted)"
+    right_motor_inverted="$(arg right_motor_inverted)"
+    left_encoder_inverted="$(arg left_encoder_inverted)"
+    right_encoder_inverted="$(arg right_encoder_inverted)"/>
+</robot>
