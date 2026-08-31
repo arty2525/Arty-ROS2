@@ -2,6 +2,7 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="arty_mobile_robot">
   <xacro:arg name="serial_device" default="/dev/serial0"/>
   <xacro:arg name="baud_rate" default="115200"/>
+  <xacro:arg name="telemetry_timeout_ms" default="500"/>
   <xacro:arg name="ticks_per_revolution" default="0.0"/>
   <xacro:arg name="left_motor_inverted" default="false"/>
   <xacro:arg name="right_motor_inverted" default="false"/>
@@ -32,15 +33,13 @@
   </link>
 
   <joint name="left_wheel_joint" type="continuous">
-    <parent link="base_link"/>
-    <child link="left_wheel_link"/>
+    <parent link="base_link"/><child link="left_wheel_link"/>
     <origin xyz="0 $(eval float(arg('wheel_separation')) / 2.0) 0" rpy="1.57079632679 0 0"/>
     <axis xyz="0 0 1"/>
   </joint>
 
   <joint name="right_wheel_joint" type="continuous">
-    <parent link="base_link"/>
-    <child link="right_wheel_link"/>
+    <parent link="base_link"/><child link="right_wheel_link"/>
     <origin xyz="0 $(eval -float(arg('wheel_separation')) / 2.0) 0" rpy="1.57079632679 0 0"/>
     <axis xyz="0 0 1"/>
   </joint>
@@ -49,6 +48,7 @@
     name="ArtyMobileRobotSystem"
     serial_device="$(arg serial_device)"
     baud_rate="$(arg baud_rate)"
+    telemetry_timeout_ms="$(arg telemetry_timeout_ms)"
     ticks_per_revolution="$(arg ticks_per_revolution)"
     left_motor_inverted="$(arg left_motor_inverted)"
     right_motor_inverted="$(arg right_motor_inverted)"
