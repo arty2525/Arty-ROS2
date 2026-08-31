@@ -2,7 +2,13 @@ cmake_minimum_required(VERSION 3.16)
 project(mobile_robot_hardware)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+  add_compile_options(
+    -Wall
+    -Wextra
+    -Wpedantic
+    -Wconversion
+    -Wshadow
+  )
 endif()
 
 set(CMAKE_CXX_STANDARD 20)
@@ -35,23 +41,65 @@ ament_target_dependencies(${PROJECT_NAME}
   rclcpp_lifecycle
 )
 
-pluginlib_export_plugin_description_file(hardware_interface mobile_robot_hardware.xml)
+pluginlib_export_plugin_description_file(
+  hardware_interface
+  mobile_robot_hardware.xml
+)
 
-install(TARGETS ${PROJECT_NAME}
+install(
+  TARGETS ${PROJECT_NAME}
   EXPORT export_${PROJECT_NAME}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
 )
-install(DIRECTORY include/ DESTINATION include)
-install(FILES mobile_robot_hardware.xml DESTINATION share/${PROJECT_NAME})
+
+install(
+  DIRECTORY include/
+  DESTINATION include
+)
+
+install(
+  FILES mobile_robot_hardware.xml
+  DESTINATION share/${PROJECT_NAME}
+)
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
-  ament_add_gtest(test_protocol test/test_protocol.cpp src/protocol.cpp)
-  target_include_directories(test_protocol PRIVATE include)
+
+  ament_add_gtest(
+    test_protocol
+    test/test_protocol.cpp
+    src/protocol.cpp
+  )
+
+  target_include_directories(
+    test_protocol
+    PRIVATE include
+  )
+
+  ament_add_gtest(
+    test_fault_flags
+    test/test_fault_flags.cpp
+  )
+
+  target_include_directories(
+    test_fault_flags
+    PRIVATE include
+  )
 endif()
 
-ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
-ament_export_dependencies(diagnostic_msgs hardware_interface pluginlib rclcpp rclcpp_lifecycle)
+ament_export_targets(
+  export_${PROJECT_NAME}
+  HAS_LIBRARY_TARGET
+)
+
+ament_export_dependencies(
+  diagnostic_msgs
+  hardware_interface
+  pluginlib
+  rclcpp
+  rclcpp_lifecycle
+)
+
 ament_package()
