@@ -39,16 +39,12 @@ def _require_bool(mapping: dict, path: tuple[str, ...]) -> bool:
 def _launch_setup(context: LaunchContext):
     config_path = LaunchConfiguration("config").perform(context)
     configuration = _load_configuration(config_path)
-
-    control_launch = (
-        Path(get_package_share_directory("mobile_robot_control"))
-        / "launch"
-        / "mobile_robot_control.launch.py"
-    )
+    control_launch = Path(get_package_share_directory("mobile_robot_control")) / "launch" / "mobile_robot_control.launch.py"
 
     arguments = {
         "serial_device": str(_require(configuration, ("serial_device",))),
         "baud_rate": str(_require(configuration, ("baud_rate",))),
+        "telemetry_timeout_ms": str(_require(configuration, ("communication", "telemetry_timeout_ms"))),
         "wheel_radius": str(_require(configuration, ("geometry", "wheel_radius"))),
         "wheel_separation": str(_require(configuration, ("geometry", "wheel_separation"))),
         "wheel_width": str(_require(configuration, ("geometry", "wheel_width"))),
@@ -66,20 +62,11 @@ def _launch_setup(context: LaunchContext):
         "max_angular_acceleration": str(_require(configuration, ("limits", "max_angular_acceleration"))),
     }
 
-    return [
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(str(control_launch)),
-            launch_arguments=arguments.items(),
-        )
-    ]
+    return [IncludeLaunchDescription(PythonLaunchDescriptionSource(str(control_launch)), launch_arguments=arguments.items())]
 
 
 def generate_launch_description() -> LaunchDescription:
-    default_config = (
-        Path(get_package_share_directory("mobile_robot_bringup"))
-        / "config"
-        / "robot.yaml"
-    )
+    default_config = Path(get_package_share_directory("mobile_robot_bringup")) / "config" / "robot.yaml"
     return LaunchDescription([
         DeclareLaunchArgument("config", default_value=str(default_config)),
         OpaqueFunction(function=_launch_setup),
