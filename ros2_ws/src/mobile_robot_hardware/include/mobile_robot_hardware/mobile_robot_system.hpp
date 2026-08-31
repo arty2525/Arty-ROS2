@@ -78,6 +78,10 @@ class MobileRobotSystem
       uint8_t command_type,
       std::chrono::milliseconds timeout);
 
+  bool read_serial_frame(
+      std::vector<uint8_t>& frame,
+      std::chrono::milliseconds timeout);
+
   bool read_one_frame(
       std::vector<uint8_t>& frame,
       std::chrono::milliseconds timeout);
