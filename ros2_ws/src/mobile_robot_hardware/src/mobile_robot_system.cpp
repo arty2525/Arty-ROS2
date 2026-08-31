@@ -14,6 +14,7 @@
 #include "diagnostic_msgs/msg/diagnostic_status.hpp"
 #include "diagnostic_msgs/msg/key_value.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
+#include "mobile_robot_hardware/fault_flags.hpp"
 #include "mobile_robot_hardware/protocol.hpp"
 #include "pluginlib/class_list_macros.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -598,8 +599,7 @@ MobileRobotSystem::read(
         std::memory_order_relaxed);
   }
 
-  const auto now =
-      std::chrono::steady_clock::now();
+  const auto now = std::chrono::steady_clock::now();
 
   if (
       now - last_telemetry_ >
@@ -614,11 +614,16 @@ MobileRobotSystem::read(
   }
 
   if (last_fault_flags_ != 0U) {
+    const std::string active_faults =
+        faults::active_faults_text(
+            last_fault_flags_);
+
     RCLCPP_ERROR(
         get_logger(),
-        "ESP32 fault_flags=0x%08X",
+        "ESP32 fault_flags=0x%08X (%s)",
         static_cast<unsigned int>(
-            last_fault_flags_));
+            last_fault_flags_),
+        active_faults.c_str());
 
     return hardware_interface::return_type::ERROR;
   }
@@ -644,12 +649,9 @@ MobileRobotSystem::write(
     return hardware_interface::return_type::ERROR;
   }
 
-  const auto now =
-      std::chrono::steady_clock::now();
+  const auto now = std::chrono::steady_clock::now();
 
-  if (
-      now - last_heartbeat_ >=
-      kHeartbeatPeriod) {
+  if (now - last_heartbeat_ >= kHeartbeatPeriod) {
     if (!send_heartbeat()) {
       return hardware_interface::return_type::ERROR;
     }
@@ -662,14 +664,12 @@ MobileRobotSystem::write(
 
 bool MobileRobotSystem::open_serial() {
   close_serial();
-
   serial_parser_.reset();
   pending_frames_.clear();
 
-  serial_fd_ =
-      ::open(
-          serial_device_.c_str(),
-          O_RDWR | O_NOCTTY | O_NONBLOCK);
+  serial_fd_ = ::open(
+      serial_device_.c_str(),
+      O_RDWR | O_NOCTTY | O_NONBLOCK);
 
   if (serial_fd_ < 0) {
     RCLCPP_ERROR(
@@ -701,11 +701,9 @@ bool MobileRobotSystem::open_serial() {
 
   tty.c_cflag =
       (tty.c_cflag & ~CSIZE) | CS8;
-
   tty.c_cflag |= CLOCAL | CREAD;
   tty.c_cflag &=
       ~(PARENB | CSTOPB | CRTSCTS);
-
   tty.c_iflag = 0;
   tty.c_oflag = 0;
   tty.c_lflag = 0;
@@ -741,8 +739,7 @@ void MobileRobotSystem::close_serial() {
 }
 
 bool MobileRobotSystem::configure_firmware() {
-  const uint16_t sequence =
-      sequence_++;
+  const uint16_t sequence = sequence_++;
 
   const protocol::ConfigurePayload payload{
       static_cast<float>(ticks_per_revolution_),
@@ -753,108 +750,110 @@ bool MobileRobotSystem::configure_firmware() {
       static_cast<uint8_t>(
           left_encoder_inverted_ ? 1U : 0U),
       static_cast<uint8_t>(
-          right_encoder_inverted_ ? 1U : 0U),
-  };
+          right_encoder_inverted_ ? 1U : 0U)};
 
-  return write_all(
-             protocol::encode_frame(
-                 protocol::MessageType::kCommandConfigure,
-                 sequence,
-                 payload)) &&
-         wait_for_ack(
-             sequence,
-             static_cast<uint8_t>(
-                 protocol::MessageType::kCommandConfigure),
-             kAckTimeout);
+  const auto frame = protocol::encode_frame(
+      protocol::MessageType::kCommandConfigure,
+      sequence,
+      payload);
+
+  if (!write_all(frame)) {
+    return false;
+  }
+
+  return wait_for_ack(
+      sequence,
+      static_cast<uint8_t>(
+          protocol::MessageType::kCommandConfigure),
+      kAckTimeout);
 }
 
 bool MobileRobotSystem::clear_firmware_faults() {
-  const uint16_t sequence =
-      sequence_++;
+  const uint16_t sequence = sequence_++;
 
   const protocol::ClearFaultsPayload payload{0U};
 
-  return write_all(
-             protocol::encode_frame(
-                 protocol::MessageType::kCommandClearFaults,
-                 sequence,
-                 payload)) &&
-         wait_for_ack(
-             sequence,
-             static_cast<uint8_t>(
-                 protocol::MessageType::kCommandClearFaults),
-             kAckTimeout);
+  const auto frame = protocol::encode_frame(
+      protocol::MessageType::kCommandClearFaults,
+      sequence,
+      payload);
+
+  if (!write_all(frame)) {
+    return false;
+  }
+
+  return wait_for_ack(
+      sequence,
+      static_cast<uint8_t>(
+          protocol::MessageType::kCommandClearFaults),
+      kAckTimeout);
 }
 
 bool MobileRobotSystem::set_firmware_enabled(
     const bool enabled) {
-  const uint16_t sequence =
-      sequence_++;
+  const uint16_t sequence = sequence_++;
 
   const protocol::EnablePayload payload{
-      static_cast<uint8_t>(
-          enabled ? 1U : 0U),
-  };
+      static_cast<uint8_t>(enabled ? 1U : 0U)};
 
-  return write_all(
-             protocol::encode_frame(
-                 protocol::MessageType::kCommandEnable,
-                 sequence,
-                 payload)) &&
-         wait_for_ack(
-             sequence,
-             static_cast<uint8_t>(
-                 protocol::MessageType::kCommandEnable),
-             kAckTimeout);
+  const auto frame = protocol::encode_frame(
+      protocol::MessageType::kCommandEnable,
+      sequence,
+      payload);
+
+  if (!write_all(frame)) {
+    return false;
+  }
+
+  return wait_for_ack(
+      sequence,
+      static_cast<uint8_t>(
+          protocol::MessageType::kCommandEnable),
+      kAckTimeout);
 }
 
 bool MobileRobotSystem::send_velocity() {
-  const uint16_t sequence =
-      sequence_++;
+  const uint16_t sequence = sequence_++;
 
-  const protocol::VelocityPayload payload{
+  const protocol::VelocityCommandPayload payload{
       static_cast<float>(left_command_),
-      static_cast<float>(right_command_),
-  };
+      static_cast<float>(right_command_)};
 
-  return write_all(
-      protocol::encode_frame(
-          protocol::MessageType::kCommandVelocity,
-          sequence,
-          payload));
+  const auto frame = protocol::encode_frame(
+      protocol::MessageType::kCommandVelocity,
+      sequence,
+      payload);
+
+  return write_all(frame);
 }
 
 bool MobileRobotSystem::send_heartbeat() {
-  const uint16_t sequence =
-      sequence_++;
+  const uint16_t sequence = sequence_++;
 
   const protocol::HeartbeatPayload payload{0U};
 
-  return write_all(
-      protocol::encode_frame(
-          protocol::MessageType::kHeartbeat,
-          sequence,
-          payload));
+  const auto frame = protocol::encode_frame(
+      protocol::MessageType::kCommandHeartbeat,
+      sequence,
+      payload);
+
+  return write_all(frame);
 }
 
 bool MobileRobotSystem::wait_for_ack(
-    const uint16_t sequence,
-    const uint8_t command_type,
+    const uint16_t expected_sequence,
+    const uint8_t expected_command_type,
     const std::chrono::milliseconds timeout) {
   const auto deadline =
-      std::chrono::steady_clock::now() +
-      timeout;
+      std::chrono::steady_clock::now() + timeout;
 
-  std::vector<uint8_t> frame;
-
-  while (
-      std::chrono::steady_clock::now() <
-      deadline) {
+  while (std::chrono::steady_clock::now() < deadline) {
     const auto remaining =
         std::chrono::duration_cast<
             std::chrono::milliseconds>(
-            deadline -
-            std::chrono::steady_clock::now());
+            deadline - std::chrono::steady_clock::now());
+
+    std::vector<uint8_t> frame;
 
     if (!read_one_frame(frame, remaining)) {
       continue;
@@ -863,27 +862,32 @@ bool MobileRobotSystem::wait_for_ack(
     const auto packet =
         protocol::decode_frame(frame);
 
+    if (!packet.has_value()) {
+      continue;
+    }
+
     if (
-        !packet.has_value() ||
         packet->header.type !=
-            static_cast<uint8_t>(
-                protocol::MessageType::kAck) ||
-        packet->header.sequence !=
-            sequence) {
+        static_cast<uint8_t>(
+            protocol::MessageType::kAck)) {
       continue;
     }
 
     protocol::AckPayload ack{};
 
     if (!protocol::decode_payload(*packet, ack)) {
-      return false;
+      continue;
     }
 
-    return
-        ack.command_type == command_type &&
-        ack.status ==
-            static_cast<uint8_t>(
-                protocol::AckStatus::kAccepted);
+    if (
+        packet->header.sequence != expected_sequence ||
+        ack.command_type != expected_command_type) {
+      continue;
+    }
+
+    return ack.status ==
+           static_cast<uint8_t>(
+               protocol::AckStatus::kOk);
   }
 
   return false;
@@ -892,12 +896,8 @@ bool MobileRobotSystem::wait_for_ack(
 bool MobileRobotSystem::read_one_frame(
     std::vector<uint8_t>& frame,
     const std::chrono::milliseconds timeout) {
-  frame.clear();
-
   if (!pending_frames_.empty()) {
-    frame = std::move(
-        pending_frames_.front());
-
+    frame = std::move(pending_frames_.front());
     pending_frames_.pop_front();
     return true;
   }
@@ -907,69 +907,56 @@ bool MobileRobotSystem::read_one_frame(
   }
 
   const auto deadline =
-      std::chrono::steady_clock::now() +
-      timeout;
+      std::chrono::steady_clock::now() + timeout;
 
-  std::array<uint8_t, 128U> buffer{};
-
-  while (
-      std::chrono::steady_clock::now() <
-      deadline) {
-    const auto now =
-        std::chrono::steady_clock::now();
-
+  while (std::chrono::steady_clock::now() < deadline) {
     const auto remaining =
         std::chrono::duration_cast<
             std::chrono::milliseconds>(
-            deadline - now);
+            deadline - std::chrono::steady_clock::now());
 
-    pollfd descriptor{
-        serial_fd_,
-        POLLIN,
-        0,
-    };
+    pollfd descriptor{};
+    descriptor.fd = serial_fd_;
+    descriptor.events = POLLIN;
 
-    const int poll_result =
-        ::poll(
-            &descriptor,
+    const int poll_timeout =
+        std::max<int>(
             1,
-            static_cast<int>(
-                std::max<int64_t>(
-                    1,
-                    remaining.count())));
+            static_cast<int>(remaining.count()));
 
-    if (poll_result < 0) {
+    const int result =
+        ::poll(&descriptor, 1, poll_timeout);
+
+    if (result < 0) {
       if (errno == EINTR) {
         continue;
       }
 
+      RCLCPP_ERROR(
+          get_logger(),
+          "poll failed: %s",
+          std::strerror(errno));
+
       return false;
     }
 
-    if (poll_result == 0) {
-      return false;
-    }
-
-    if (
-        (descriptor.revents &
-         (POLLERR | POLLHUP | POLLNVAL)) !=
-        0) {
-      return false;
-    }
-
-    if (
-        (descriptor.revents & POLLIN) ==
-        0) {
+    if (result == 0) {
       continue;
     }
 
-    const ssize_t count =
+    if ((descriptor.revents & POLLIN) == 0) {
+      continue;
+    }
+
+    std::array<uint8_t, 128U> buffer{};
+
+    const ssize_t bytes_read =
         ::read(
             serial_fd_,
             buffer.data(),
             buffer.size());
 
-    if (count < 0) {
+    if (bytes_read < 0) {
       if (
           errno == EAGAIN ||
           errno == EWOULDBLOCK ||
@@ -977,36 +964,42 @@ bool MobileRobotSystem::read_one_frame(
         continue;
       }
 
+      RCLCPP_ERROR(
+          get_logger(),
+          "serial read failed: %s",
+          std::strerror(errno));
+
       return false;
     }
 
-    if (count == 0) {
+    if (bytes_read == 0) {
       continue;
     }
 
-    for (ssize_t index = 0;
-         index < count;
-         ++index) {
-      auto completed =
-          serial_parser_.push(
-              buffer[
-                  static_cast<std::size_t>(
-                      index)]);
+    bool have_frame = false;
 
-      if (!completed.has_value()) {
+    for (ssize_t index = 0;
+         index < bytes_read;
+         ++index) {
+      std::vector<uint8_t> complete_frame;
+
+      if (
+          !serial_parser_.push_byte(
+              buffer[static_cast<std::size_t>(index)],
+              complete_frame)) {
         continue;
       }
 
-      if (frame.empty()) {
-        frame = std::move(
-            *completed);
+      if (!have_frame) {
+        frame = std::move(complete_frame);
+        have_frame = true;
       } else {
         pending_frames_.push_back(
-            std::move(*completed));
+            std::move(complete_frame));
       }
     }
 
-    if (!frame.empty()) {
+    if (have_frame) {
       return true;
     }
   }
@@ -1020,38 +1013,43 @@ bool MobileRobotSystem::write_all(
     return false;
   }
 
-  std::size_t written = 0U;
+  std::size_t offset = 0U;
 
-  while (written < data.size()) {
-    const ssize_t count =
+  while (offset < data.size()) {
+    const ssize_t written =
         ::write(
             serial_fd_,
-            data.data() + written,
-            data.size() - written);
+            data.data() + offset,
+            data.size() - offset);
 
-    if (count < 0) {
+    if (written < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+
       if (
           errno == EAGAIN ||
           errno == EWOULDBLOCK) {
-        pollfd descriptor{
-            serial_fd_,
-            POLLOUT,
-            0,
-        };
+        pollfd descriptor{};
+        descriptor.fd = serial_fd_;
+        descriptor.events = POLLOUT;
 
-        if (::poll(&descriptor, 1, 100) <= 0) {
+        if (::poll(&descriptor, 1, 50) <= 0) {
           return false;
         }
 
         continue;
       }
 
+      RCLCPP_ERROR(
+          get_logger(),
+          "serial write failed: %s",
+          std::strerror(errno));
+
       return false;
     }
 
-    written +=
-        static_cast<std::size_t>(
-            count);
+    offset += static_cast<std::size_t>(written);
   }
 
   return true;
@@ -1166,7 +1164,9 @@ void MobileRobotSystem::publish_hardware_diagnostics() {
         diagnostic_msgs::msg::
             DiagnosticStatus::ERROR;
     status.message =
-        "ESP32 fault detected";
+        "ESP32 fault: " +
+        faults::active_faults_text(
+            fault_flags);
   } else {
     status.level =
         diagnostic_msgs::msg::
@@ -1218,6 +1218,55 @@ void MobileRobotSystem::publish_hardware_diagnostics() {
           "fault_flags",
           std::to_string(
               fault_flags)),
+      make_key_value(
+          "active_faults",
+          faults::active_faults_text(
+              fault_flags)),
+      make_key_value(
+          "command_timeout",
+          faults::is_set(
+              fault_flags,
+              faults::FaultFlag::
+                  kCommandTimeout)
+              ? "true"
+              : "false"),
+      make_key_value(
+          "heartbeat_timeout",
+          faults::is_set(
+              fault_flags,
+              faults::FaultFlag::
+                  kHeartbeatTimeout)
+              ? "true"
+              : "false"),
+      make_key_value(
+          "invalid_configuration",
+          faults::is_set(
+              fault_flags,
+              faults::FaultFlag::
+                  kInvalidConfiguration)
+              ? "true"
+              : "false"),
+      make_key_value(
+          "protocol_error",
+          faults::is_set(
+              fault_flags,
+              faults::FaultFlag::
+                  kProtocolError)
+              ? "true"
+              : "false"),
+      make_key_value(
+          "invalid_velocity_command",
+          faults::is_set(
+              fault_flags,
+              faults::FaultFlag::
+                  kInvalidVelocityCommand)
+              ? "true"
+              : "false"),
+      make_key_value(
+          "unknown_fault_bits",
+          std::to_string(
+              faults::unknown_bits(
+                  fault_flags))),
       make_key_value(
           "left_ticks",
           std::to_string(
