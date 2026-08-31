@@ -26,6 +26,7 @@ enum class MessageType : uint8_t {
 
 enum class AckStatus : uint8_t {
   kAccepted = 0,
+  kOk = kAccepted,
   kInvalidPayload = 1,
   kInvalidConfiguration = 2,
   kRejectedByState = 3,
