@@ -52,6 +52,10 @@ struct HeartbeatPayload {
   uint8_t reserved;
 };
 
+struct ClearFaultsPayload {
+  uint8_t reserved;
+};
+
 struct ConfigurePayload {
   float ticks_per_revolution;
   uint8_t left_motor_inverted;
