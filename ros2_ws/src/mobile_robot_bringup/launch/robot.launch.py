@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import yaml
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchContext, LaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration
+
+
+def _load_configuration(path: str) -> dict:
+    with Path(path).open("r", encoding="utf-8") as stream:
+        data = yaml.safe_load(stream)
+    if not isinstance(data, dict):
+        raise RuntimeError("robot configuration must be a YAML mapping")
+    return data
+
+
+def _require(mapping: dict, path: tuple[str, ...]):
+    value = mapping
+    for key in path:
+        if not isinstance(value, dict) or key not in value:
+            raise RuntimeError("Missing robot configuration key: " + ".".join(path))
+        value = value[key]
+    return value
+
+
+def _launch_setup(context: LaunchContext):
+    config_path = LaunchConfiguration("config").perform(context)
+    configuration = _load_configuration(config_path)
+
+    control_launch = (
+        Path(get_package_share_directory("mobile_robot_control"))
+        / "launch"
+        / "mobile_robot_control.launch.py"
+    )
+
+    arguments = {
+        "serial_device": str(_require(configuration, ("serial_device",))),
+        "baud_rate": str(_require(configuration, ("baud_rate",))),
+        "wheel_radius": str(_require(configuration, ("geometry", "wheel_radius"))),
+        "wheel_separation": str(_require(configuration, ("geometry", "wheel_separation"))),
+        "wheel_width": str(_require(configuration, ("geometry", "wheel_width"))),
+        "base_length": str(_require(configuration, ("geometry", "base_length"))),
+        "base_width": str(_require(configuration, ("geometry", "base_width"))),
+        "base_height": str(_require(configuration, ("geometry", "base_height"))),
+        "ticks_per_revolution": str(_require(configuration, ("encoder", "ticks_per_revolution"))),
+        "max_linear_velocity": str(_require(configuration, ("limits", "max_linear_velocity"))),
+        "max_linear_acceleration": str(_require(configuration, ("limits", "max_linear_acceleration"))),
+        "max_angular_velocity": str(_require(configuration, ("limits", "max_angular_velocity"))),
+        "max_angular_acceleration": str(_require(configuration, ("limits", "max_angular_acceleration"))),
+    }
+
+    return [
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(str(control_launch)),
+            launch_arguments=arguments.items(),
+        )
+    ]
+
+
+def generate_launch_description() -> LaunchDescription:
+    default_config = (
+        Path(get_package_share_directory("mobile_robot_bringup"))
+        / "config"
+        / "robot.yaml"
+    )
+    return LaunchDescription(
+        [
+            DeclareLaunchArgument("config", default_value=str(default_config)),
+            OpaqueFunction(function=_launch_setup),
+        ]
+    )
