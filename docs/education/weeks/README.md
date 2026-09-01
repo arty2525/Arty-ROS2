@@ -9,14 +9,14 @@
 2. [Week 02 — Ubuntu/Linux](week-02.md)
 3. [Week 03 — Git/GitHub](week-03.md)
 4. [Week 04 — ROS 2 Jazzy](week-04.md)
-5. Week 05 — ROS 2 Graph
+5. [Week 05 — ROS 2 Graph](week-05.md)
 
 ## หน่วยที่ 2 — Embedded & Hardware
-6. Week 06 — ROS 2 Package
-7. Week 07 — ESP32 + PlatformIO
-8. Week 08 — Motor Driver + PWM/DIR
-9. Week 09 — Encoder
-10. Week 10 — UART Protocol
+6. [Week 06 — ROS 2 Package และ Colcon](week-06.md)
+7. [Week 07 — ESP32 + PlatformIO](week-07.md)
+8. [Week 08 — Motor Driver + PWM/DIR](week-08.md)
+9. [Week 09 — Encoder](week-09.md)
+10. [Week 10 — UART Protocol](week-10.md)
 
 ## หน่วยที่ 3 — Robot Model & Control
 11. Week 11 — URDF/Xacro + TF
