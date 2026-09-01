@@ -1,16 +1,15 @@
 # สัปดาห์ที่ 5 — ROS 2 Graph: Node, Topic และ Message
 
-**รายวิชา:** ระบบปฏิบัติการหุ่นยนต์ • ม.4  
-**เวลา:** 2 คาบ × 50 นาที
+**เวลา:** 100 นาทีต่อเนื่อง
 
 ## จุดประสงค์
-นักเรียนสามารถ 1) อธิบาย Node/Topic/Publisher/Subscriber 2) ใช้ ROS 2 CLI สำรวจ graph 3) อ่านชนิด message และ 4) สร้างแผนภาพการไหลของข้อมูลได้
+อธิบาย Node/Topic/Publisher/Subscriber, ใช้ ROS 2 CLI สำรวจ graph, อ่าน message type และสร้าง data-flow diagram ได้
 
-## คาบที่ 1
-### Engage — 10 นาที
-ครูถาม: ถ้าหุ่นมีโปรแกรมควบคุมล้อ โปรแกรมอ่านเซนเซอร์ และโปรแกรมแสดงผล โปรแกรมเหล่านี้จะแลกข้อมูลกันอย่างไรโดยไม่รวมทุกอย่างไว้ไฟล์เดียว?
+## กิจกรรมการเรียนรู้ 100 นาทีต่อเนื่อง
+### 1. Engage — 10 นาที
+ถามว่าหากโปรแกรมควบคุมล้อ โปรแกรม sensor และโปรแกรมแสดงผลแยกกัน จะแลกข้อมูลกันอย่างไร.
 
-### Explore — 30 นาที
+### 2. Explore — 30 นาที
 Terminal A:
 ```bash
 source /opt/ros/jazzy/setup.bash
@@ -25,35 +24,18 @@ ros2 topic list -t
 ros2 topic info /chatter
 ros2 topic echo /chatter
 ```
-นักเรียนบันทึกชื่อ node, topic, type และความสัมพันธ์ publisher/subscriber.
+บันทึก node/topic/type และ publisher/subscriber.
 
-### Explain — 10 นาที
-สรุป ROS Graph และแนวคิด message interface. เน้นว่า Topic คือช่องทางเชิงตรรกะ ไม่ใช่สายไฟจริง.
+### 3. Explain — 20 นาที
+สรุป ROS Graph, message interface และ Topic ในฐานะช่องทางเชิงตรรกะ. ทดลอง `ros2 interface show std_msgs/msg/String`.
 
-## คาบที่ 2
-### Explain — 10 นาที
-ทดลองดู interface:
-```bash
-ros2 interface show std_msgs/msg/String
-```
-
-### Elaborate — 25 นาที
-เปิด Listener แล้วใช้:
+### 4. Elaborate — 25 นาที
+เปิด listener แล้วใช้:
 ```bash
 ros2 node info /talker
 ros2 node info /listener
 ```
-ให้นักเรียนวาด graph `talker → /chatter → listener` พร้อมระบุ message type.
+วาด `talker → /chatter → listener` พร้อม message type และเชื่อมโยงกับ `/joint_states`, odometry, diagnostics ของ Arty-ROS2 โดยยังไม่สั่งหุ่นเคลื่อนที่.
 
-จากนั้นเชื่อมโยงกับ Arty-ROS2 เช่น `/joint_states`, odometry และ diagnostics โดยยังไม่ต้องสั่งหุ่นเคลื่อนที่.
-
-### Evaluate — 15 นาที
-ชิ้นงาน: ROS Graph 1 ภาพ + ตาราง Node/Topic/Type + Exit Ticket.
-
-## คำถาม
-1. Node กับ Topic ต่างกันอย่างไร?
-2. ทำไม subscriber ต้องทราบ message type?
-3. ถ้า topic มีอยู่แต่ `echo` ไม่มีข้อมูล ควรตรวจอะไรต่อ?
-
-## เกณฑ์ผ่าน
-ความรู้ ≥70%, CLI task ≥80%, graph แสดงทิศข้อมูลถูกต้อง และบันทึกหลักฐานครบ.
+### 5. Evaluate — 15 นาที
+ส่ง ROS Graph + Node/Topic/Type table + Exit Ticket. ความรู้ ≥70%, CLI ≥80%, graph ต้องแสดงทิศข้อมูลถูกต้อง.
