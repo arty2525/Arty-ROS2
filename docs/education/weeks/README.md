@@ -26,17 +26,23 @@
 15. [Week 15 — Diagnostics + Fault Handling](week-15.md)
 
 ## หน่วยที่ 4 — Engineering Integration
-16. Week 16 — Physical Parameter Measurement
-17. Week 17 — Calibration + PID
-18. Week 18 — System Integration
-19. Week 19 — Mini Challenge
-20. Week 20 — Final Demonstration + Post-test
+16. [Week 16 — Physical Parameter Measurement](week-16.md)
+17. [Week 17 — Calibration + PID](week-17.md)
+18. [Week 18 — System Integration](week-18.md)
+19. [Week 19 — Mini Challenge](week-19.md)
+20. [Week 20 — Final Demonstration + Post-test](week-20.md)
 
-## รูปแบบมาตรฐานใหม่
-ทุกสัปดาห์จัดเป็นกิจกรรม **100 นาทีต่อเนื่อง ไม่แยกคาบ 1/คาบ 2** โดยใช้ลำดับ 5E เป็นแกน:
+## รูปแบบมาตรฐาน
+ทุกสัปดาห์เป็นกิจกรรม **100 นาทีต่อเนื่อง ไม่แยกคาบ 1/คาบ 2** และใช้ Active Learning 5E:
 
 `Engage → Explore → Explain → Elaborate → Evaluate`
 
-เวลาสามารถปรับตามลักษณะกิจกรรม แต่ผลรวมต้อง 100 นาที. ทุกบทต้องมีเป้าหมายเชิงพฤติกรรม, Collaborative Learning, การทดลอง/หลักฐานจริง, Safety checkpoint, ชิ้นงาน, เกณฑ์ประเมิน และ Exit Ticket.
+ทุกบทเชื่อมต่อกันจากพื้นฐาน Linux ไปสู่ระบบหุ่นยนต์จริง และประกอบด้วยเป้าหมายเชิงพฤติกรรม, Collaborative Learning, การทดลอง/หลักฐานจริง, Safety checkpoint, ชิ้นงาน, เกณฑ์ประเมิน และ Exit Ticket/Reflection ตามความเหมาะสม
 
-> หลักการหลักสูตร: **Measure → Configure → Test → Record** — ไม่เดาค่าพารามิเตอร์ฮาร์ดแวร์เพื่อทำให้ระบบดูเหมือนทำงานได้.
+## เส้นทางการเรียนรู้
+`Ubuntu/Linux → Git/GitHub → ROS 2 → ESP32 → Motor/Encoder → UART → URDF/TF → ros2_control → Differential Drive → Odometry → Diagnostics → Measurement → Calibration → Integration → Challenge`
+
+## หลักวิศวกรรมของรายวิชา
+**Measure → Configure → Test → Record → Improve**
+
+ไม่เดาค่าพารามิเตอร์ฮาร์ดแวร์เพื่อทำให้ระบบดูเหมือนทำงานได้ ทุกค่าที่มีผลต่อการเคลื่อนที่ต้องสามารถตรวจสอบย้อนกลับถึงการวัดหรือหลักฐานจากฮาร์ดแวร์จริงได้
