@@ -30,6 +30,15 @@ jobs:
         with:
           required-ros-distributions: jazzy
 
+      - name: Install ROS 2 Jazzy development tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-colcon-common-extensions \
+            python3-rosdep
+
       - name: Install rosdep dependencies
         shell: bash
         run: |
